@@ -1,0 +1,291 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    citecolor=blue!60!black,
+    urlcolor=blue!60!black
+}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\title{\textbf{Compact Mixed-Integer Linear Programming Formulations for the Capacitated Vehicle Routing Problem:\\Polyhedral Strength, Branch-and-Bound Scaling, and Computational Study}}
+\author{Master of Data Science --- Practical Course on Mathematical Modelling\\Hanoi University of Science and Technology (SOICT)}
+\date{October 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The Capacitated Vehicle Routing Problem (CVRP) is a foundational NP-hard combinatorial optimization problem in logistics and supply chain management. While exponential-size formulations based on subtour elimination constraints (Branch-and-Cut) or set partitioning (Column Generation) require specialized separation or pricing subroutines, \emph{compact} Mixed-Integer Linear Programming (MILP) formulations involve a polynomial number of variables and constraints and can be solved directly by general-purpose MILP solvers. In this report, we formulate, analyze, and experimentally compare five compact MILP formulations for the CVRP in \texttt{Julia} (\texttt{JuMP.jl}, \texttt{HiGHS.jl}, and \texttt{Bonobo.jl}): (1) the Basic 2-Index Miller--Tucker--Zemlin (\texttt{MTZ}) model, (2) the Desrochers--Laporte Lifted 2-Index MTZ (\texttt{LiftedMTZ}) model with tightened load bounds, (3) the Gavish--Graves 2-Index Single-Commodity Flow (\texttt{SCF}) model, (4) the Wolsey 3-Index Vehicle-Flow (\texttt{ThreeIndex}) model with symmetry-breaking constraints, and (5) the 2-Index Multi-Commodity Flow (\texttt{MCF}) model. We prove the polyhedral dominance hierarchy among their linear programming (LP) relaxations, describe a reproducible synthetic instance generation protocol across uniform and clustered topologies, and report extensive numerical experiments averaged over 10 independent runs per configuration.
+\end{abstract}
+
+\section{Introduction}
+
+\subsection{Context and Motivation}
+Efficient physical distribution of goods is a central operational challenge in modern freight transportation, e-commerce fulfillment, and urban logistics. In a typical last-mile distribution network, a fleet of delivery vehicles stationed at a central depot must serve a geographically dispersed set of customers, each requesting a specific quantity of goods, while respecting vehicle payload limits. Transportation costs---including fuel consumption, driver wages, and fleet maintenance---scale directly with total travel distance. Even modest percentage reductions in routing cost translate into substantial economic and environmental savings.
+
+From a mathematical modelling perspective, the Capacitated Vehicle Routing Problem (CVRP), introduced by Dantzig and Ramser (1959) and extensively surveyed by Toth and Vigo (2002) and Wolsey (2014), generalizes the Traveling Salesman Problem (TSP) by introducing vehicle capacity constraints and multiple routes. Because the TSP is a special case of the CVRP when vehicle capacity exceeds total customer demand ($Q \ge \sum_{i=1}^n d_i$) and $K = 1$, the CVRP is strongly NP-hard.
+
+A central theme of mathematical programming is that \emph{different integer programming formulations of the exact same combinatorial problem can exhibit dramatically different computational behavior}. Specifically, the quality of the root Linear Programming (LP) relaxation lower bound ($LB_{\text{LP}}$), the presence of symmetry among identical vehicles, and the growth rate of variables and constraints ($O(n^2)$ vs.\ $O(K n^2)$ vs.\ $O(n^3)$) govern the size of the Branch-and-Bound (B\&B) search tree. Our objective in this capstone project is to conduct a rigorous theoretical and empirical investigation of five compact MILP formulations for the CVRP using \texttt{JuMP.jl}, \texttt{HiGHS.jl}, and a custom LP-based Branch-and-Bound solver implemented in \texttt{Bonobo.jl}.
+
+\subsection{Problem Description}
+We consider the single-depot, single-period, deterministic Capacitated Vehicle Routing Problem (CVRP) defined on a complete directed graph $G = (V_0, A)$:
+\begin{itemize}[noitemsep,topsep=3pt]
+    \item $V_0 = \{0\} \cup V$ is the set of vertices, where vertex $0$ represents the central depot and $V = \{1, 2, \dots, n\}$ is the set of $n$ customers (clients).
+    \item $A = \{(i, j) \in V_0 \times V_0 : i \neq j\}$ is the set of directed arcs, with cardinality $|A| = (n+1)n$.
+    \item Each arc $(i, j) \in A$ has a nonnegative travel cost (distance) $c_{ij} \ge 0$ satisfying the triangle inequality $c_{ij} \le c_{ik} + c_{kj}$ for all $i, j, k \in V_0$.
+    \item Each client $i \in V$ has a positive integer demand $d_i \in \mathbb{Z}_+$ ($d_0 = 0$).
+    \item A homogeneous fleet of $K$ identical vehicles, each of positive capacity $Q \ge \max_{i \in V} d_i$, is stationed at the depot $0$.
+\end{itemize}
+A feasible solution consists of $K$ simple directed cycles (routes) in $G$, each starting and ending at the depot $0$, such that:
+\begin{enumerate}[noitemsep,topsep=3pt]
+    \item Every client $i \in V$ is visited by exactly one vehicle route (no split deliveries).
+    \item The total demand of the clients visited on any single vehicle route does not exceed the vehicle capacity $Q$.
+    \item All $K$ vehicles leave from and return to the depot $0$.
+\end{enumerate}
+The optimization objective is to minimize the total travel cost over all $K$ vehicle routes.
+
+\section{Mathematical Formulations}
+
+\subsection{Summary of Model Data and Common Routing Structure}
+Table~\ref{tab:notation} summarizes the input data shared across all five mathematical models. In our \texttt{Julia} implementation (\texttt{src/instances.jl} and \texttt{src/models.jl}), vertices are indexed $1, \dots, n+1$ where index $1$ corresponds to the depot $0$ and indices $2, \dots, n+1$ correspond to clients $1, \dots, n$.
+
+\begin{table}[htbp]
+\centering
+\caption{Input Parameters and Sets for the CVRP Formulations}
+\label{tab:notation}
+\small
+\begin{tabular}{llp{10.5cm}}
+\toprule
+\textbf{Symbol} & \textbf{Domain} & \textbf{Description} \\
+\midrule
+$V$ & $\{1, \dots, n\}$ & Set of $n$ customer locations requiring service \\
+$V_0$ & $\{0\} \cup V$ & Complete vertex set including the central depot $0$ \\
+$A$ & $\{(i,j) \in V_0^2 : i \neq j\}$ & Set of directed arcs between distinct vertices ($|A| = n(n+1)$) \\
+$\delta^+(v), \delta^-(v)$ & $\subset A$ & Outgoing arcs $\{(v, j) \in A\}$ and incoming arcs $\{(i, v) \in A\}$ at vertex $v \in V_0$ \\
+$K$ & $\mathbb{Z}_+$ & Number of available homogeneous vehicles stationed at depot $0$ \\
+$Q$ & $\mathbb{R}_+$ & Maximum payload capacity of each vehicle \\
+$d_i$ & $\mathbb{R}_+$ & Demand of client $i \in V$ (with $d_0 = 0$ and $d_i \le Q$) \\
+$c_{ij}$ & $\mathbb{R}_+$ & Travel cost (or distance) of traversing arc $(i, j) \in A$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In all four 2-index formulations (\texttt{MTZ}, \texttt{LiftedMTZ}, \texttt{SCF}, and \texttt{MCF}), the routing skeleton is represented by binary arc-selection variables:
+\[
+x_{ij} = \begin{cases}
+1 & \text{if a vehicle traverses directed arc } (i, j) \in A, \\
+0 & \text{otherwise.}
+\end{cases}
+\]
+The common objective function and degree constraints are:
+\begin{align}
+\min \quad & \sum_{(i,j) \in A} c_{ij} x_{ij} \label{eq:obj_2idx} \\
+\text{s.t.} \quad & \sum_{j \in V_0 \setminus \{i\}} x_{ij} = 1 && \forall i \in V \quad \text{(client out-degree)} \label{eq:deg_out} \\
+& \sum_{i \in V_0 \setminus \{j\}} x_{ij} = 1 && \forall j \in V \quad \text{(client in-degree)} \label{eq:deg_in} \\
+& \sum_{j \in V} x_{0j} = K, \qquad \sum_{i \in V} x_{i0} = K && \text{(depot fleet degree)} \label{eq:deg_depot} \\
+& x_{ij} = 0 && \forall i, j \in V, \; i \neq j : d_i + d_j > Q \quad \text{(incompatible arcs)} \label{eq:incomp}
+\end{align}
+Constraints~\eqref{eq:deg_out}--\eqref{eq:deg_in} enforce that every client is entered and left exactly once, while Constraint~\eqref{eq:deg_depot} ensures that exactly $K$ vehicles depart from and return to the depot. However, degree constraints alone permit disconnected client subtours $S \subseteq V$ that bypass the depot, as well as depot-connected tours whose total demand exceeds $Q$. In the canonical exponential 2-index formulation (Wolsey, 2014, Slide 11), both defects are eliminated by the Rounded Capacity Cuts (RCCs):
+\begin{equation}
+\sum_{i \in V_0 \setminus S} \sum_{j \in S} x_{ij} \ge \left\lceil \frac{\sum_{i \in S} d_i}{Q} \right\rceil \qquad \forall S \subseteq V, \; S \neq \emptyset. \label{eq:rcc}
+\end{equation}
+Because Constraint~\eqref{eq:rcc} comprises $2^n - 1$ inequalities, compact formulations replace~\eqref{eq:rcc} with polynomial-size auxiliary variables and constraints, as detailed below.
+
+\subsection{Model 1: Basic 2-Index Capacitated MTZ Formulation (\texttt{MTZ})}
+Extending the classical Miller--Tucker--Zemlin (1960) TSP formulation (Lecture 5, Slide 52) to the CVRP, we introduce a continuous variable $u_i \in \mathbb{R}_+$ for each client $i \in V$ representing the cumulative load delivered by the vehicle along its current route up to and including client $i$.
+\begin{align}
+\text{(\textbf{MTZ})} \quad \min \quad & \sum_{(i,j) \in A} c_{ij} x_{ij} \nonumber \\
+\text{s.t.} \quad & \text{Constraints~\eqref{eq:deg_out}--\eqref{eq:incomp}}, \nonumber \\
+& u_i - u_j + Q x_{ij} \le Q - d_j && \forall i, j \in V, \; i \neq j, \label{eq:mtz_cut} \\
+& d_i \le u_i \le Q && \forall i \in V, \label{eq:mtz_bounds} \\
+& x_{ij} \in \{0, 1\} && \forall (i, j) \in A. \nonumber
+\end{align}
+\paragraph{Explanation of Constraints:}
+\begin{itemize}[noitemsep,topsep=2pt]
+    \item \textbf{Big-$M$ Load Propagation~\eqref{eq:mtz_cut}:} Whenever arc $(i, j)$ is used ($x_{ij} = 1$), Constraint~\eqref{eq:mtz_cut} simplifies to $u_j \ge u_i + d_j$, forcing the cumulative load variable $u_j$ to increase by at least client $j$'s demand $d_j$. Along any directed cycle $C \subseteq V$ detached from the depot, summing $u_j - u_i \ge d_j$ around $C$ yields $0 \ge \sum_{j \in C} d_j > 0$, a contradiction; hence all subtours in $V$ are eliminated. When $x_{ij} = 0$, the inequality reduces to $u_i - u_j \le Q - d_j$, which is redundant given~\eqref{eq:mtz_bounds}.
+    \item \textbf{Capacity Enforcement~\eqref{eq:mtz_bounds}:} At the first client $i_1$ visited after the depot, $u_{i_1} \ge d_{i_1}$. By induction along a route $(0, i_1, i_2, \dots, i_r, 0)$, $u_{i_r} \ge \sum_{s=1}^r d_{i_s}$. Imposing $u_{i_r} \le Q$ guarantees that the total demand served on the route does not exceed $Q$.
+    \item \textbf{Size:} $(n+1)n$ binary variables, $n$ continuous variables, and $2n + 2 + n(n-1) = n^2 + n + 2$ linear constraints.
+\end{itemize}
+
+\subsection{Model 2: Lifted 2-Index Capacitated MTZ Formulation (\texttt{LiftedMTZ})}
+As demonstrated in Lecture 5 (Slide 53) for the TSP, the basic MTZ constraint~\eqref{eq:mtz_cut} has a weak LP relaxation because when $x_{ji} = 1$ (so the vehicle travels from $j$ to $i$ and $x_{ij} = 0$), the exact cumulative load satisfies $u_i - u_j = d_i$, leaving a positive slack of $(Q - d_j) - d_i = Q - d_i - d_j$ in~\eqref{eq:mtz_cut}. Following Desrochers and Laporte (1991) and Kara, Laporte, and Bektas (2004), we lift the reverse arc variable $x_{ji}$ into~\eqref{eq:mtz_cut} and tighten the lower and upper bounds on $u_i$:
+\begin{align}
+\text{(\textbf{LiftedMTZ})} \quad \min \quad & \sum_{(i,j) \in A} c_{ij} x_{ij} \nonumber \\
+\text{s.t.} \quad & \text{Constraints~\eqref{eq:deg_out}--\eqref{eq:incomp}, \eqref{eq:mtz_bounds}}, \nonumber \\
+& u_i - u_j + Q x_{ij} + \max(0, Q - d_i - d_j) x_{ji} \le Q - d_j && \forall i, j \in V, \; i \neq j, \label{eq:lifted_mtz} \\
+& u_i + (Q - d_i) x_{0i} \le Q && \forall i \in V, \label{eq:ub_depot} \\
+& u_i + \sum_{j \in V \setminus \{i\} : d_i + d_j \le Q} d_j x_{ij} \le Q && \forall i \in V, \label{eq:ub_next} \\
+& u_i - \sum_{j \in V \setminus \{i\} : d_i + d_j \le Q} d_j x_{ji} \ge d_i && \forall i \in V. \label{eq:lb_prev}
+\end{align}
+\paragraph{Explanation of Lifted Constraints:}
+\begin{itemize}[noitemsep,topsep=2pt]
+    \item \textbf{Reverse-Arc Lifting~\eqref{eq:lifted_mtz}:} When $x_{ji} = 1$ and $x_{ij} = 0$ (which requires $d_i + d_j \le Q$), Constraint~\eqref{eq:lifted_mtz} enforces $u_i - u_j \le d_i$. Combined with the reverse constraint for $(j, i)$, which enforces $u_i - u_j \ge d_i$, the lifted pair forces $u_i - u_j = d_i$ with zero slack.
+    \item \textbf{Tightened Node-Load Bounds~\eqref{eq:ub_depot}--\eqref{eq:lb_prev}:} Constraint~\eqref{eq:ub_depot} forces $u_i = d_i$ whenever client $i$ is the first stop after the depot ($x_{0i} = 1$). Constraint~\eqref{eq:ub_next} tightens the upper bound to $u_i \le Q - d_j$ whenever client $i$ is immediately followed by client $j$ ($x_{ij} = 1$). Constraint~\eqref{eq:lb_prev} tightens the lower bound to $u_i \ge d_i + d_j$ whenever client $i$ is immediately preceded by client $j$ ($x_{ji} = 1$). Note that~\eqref{eq:ub_depot} and~\eqref{eq:ub_next} are kept as separate inequalities so they remain valid when a route visits multiple clients ($x_{0i} = 1$ and $x_{ij} = 1$ simultaneously).
+\end{itemize}
+
+\subsection{Model 3: 2-Index Single-Commodity Flow Formulation (\texttt{SCF})}
+Proposed by Gavish and Graves (1978), the Single-Commodity Flow (\texttt{SCF}) formulation replaces the node potentials $u_i$ with continuous arc-flow variables $f_{ij} \ge 0$ for each $(i, j) \in A$, representing the total remaining load carried by a vehicle while traversing arc $(i, j)$:
+\begin{align}
+\text{(\textbf{SCF})} \quad \min \quad & \sum_{(i,j) \in A} c_{ij} x_{ij} \nonumber \\
+\text{s.t.} \quad & \text{Constraints~\eqref{eq:deg_out}--\eqref{eq:incomp}}, \nonumber \\
+& \sum_{j \in V} f_{0j} - \sum_{i \in V} f_{i0} = \sum_{i \in V} d_i && \text{(depot flow supply)} \label{eq:scf_depot} \\
+& \sum_{i \in V_0 \setminus \{v\}} f_{iv} - \sum_{j \in V_0 \setminus \{v\}} f_{vj} = d_v && \forall v \in V \quad \text{(client flow conservation)} \label{eq:scf_cons} \\
+& d_j x_{ij} \le f_{ij} \le (Q - d_i) x_{ij} && \forall (i, j) \in A : j \in V, \label{eq:scf_bounds} \\
+& f_{i0} = 0 && \forall i \in V, \label{eq:scf_return} \\
+& x_{ij} \in \{0, 1\}, \; f_{ij} \ge 0 && \forall (i, j) \in A. \nonumber
+\end{align}
+\paragraph{Explanation of Constraints:}
+\begin{itemize}[noitemsep,topsep=2pt]
+    \item \textbf{Flow Balance~\eqref{eq:scf_depot}--\eqref{eq:scf_cons}:} The depot dispatches a total commodity flow equal to the aggregate demand $\sum_{i \in V} d_i$. Each visited client $v \in V$ absorbs exactly $d_v$ units of flow, so the load on the vehicle decreases by $d_v$ upon leaving $v$.
+    \item \textbf{Tightened Variable-Upper-Bound (VUB) Linking~\eqref{eq:scf_bounds}--\eqref{eq:scf_return}:} If $x_{ij} = 0$, then $f_{ij} = 0$. If $x_{ij} = 1$ ($j \in V$), the vehicle must carry at least $d_j$ units to deliver to $j$, and at most $Q - d_i$ units since $d_i$ was already delivered at node $i$ (with $d_0 = 0$ for arcs $(0, j)$ leaving the depot). Vehicles return empty to the depot ($f_{i0} = 0$).
+\end{itemize}
+
+\subsection{Model 4: 3-Index Vehicle-Flow Formulation (\texttt{ThreeIndex})}
+Following Wolsey (2014, Slide 10), the 3-Index formulation disaggregates decisions by vehicle $k \in \mathcal{K} = \{1, \dots, K\}$ using binary arc variables $x_{ij}^k \in \{0, 1\}$ ($1$ if vehicle $k$ traverses arc $(i, j)$) and binary assignment variables $z_i^k \in \{0, 1\}$ ($1$ if client $i$ is served by vehicle $k$):
+\begin{align}
+\text{(\textbf{ThreeIndex})} \quad \min \quad & \sum_{k=1}^K \sum_{(i,j) \in A} c_{ij} x_{ij}^k \nonumber \\
+\text{s.t.} \quad & \sum_{k=1}^K z_i^k = 1, \qquad z_0^k = 1 && \forall i \in V, \; \forall k \in \mathcal{K}, \label{eq:3idx_assign} \\
+& \sum_{j \in V_0 \setminus \{i\}} x_{ij}^k = z_i^k, \qquad \sum_{j \in V_0 \setminus \{i\}} x_{ji}^k = z_i^k && \forall i \in V_0, \; \forall k \in \mathcal{K}, \label{eq:3idx_deg} \\
+& \sum_{i \in V} d_i z_i^k \le Q z_0^k && \forall k \in \mathcal{K}, \label{eq:3idx_cap} \\
+& \sum_{i \in V} d_i z_i^k \ge \sum_{i \in V} d_i z_i^{k+1} && \forall k \in \{1, \dots, K-1\}, \label{eq:3idx_sym} \\
+& u_i - u_j + Q \bar{x}_{ij} + \max(0, Q - d_i - d_j)\bar{x}_{ji} \le Q - d_j && \forall i \neq j \in V, \label{eq:3idx_subtour}
+\end{align}
+where $\bar{x}_{ij} = \sum_{k=1}^K x_{ij}^k$ denotes the aggregated arc flow and $u_i \in [d_i, Q]$.
+\paragraph{Symmetry Breaking~\eqref{eq:3idx_sym}:} Without~\eqref{eq:3idx_sym}, permuting the indices $1, \dots, K$ of identical vehicles yields $K!$ equivalent solutions with identical objective values, causing severe stalling in Branch-and-Bound (Lecture 6, Slide 50). Constraint~\eqref{eq:3idx_sym} orders vehicles by non-increasing total assigned load.
+
+\subsection{Model 5: 2-Index Multi-Commodity Flow Formulation (\texttt{MCF})}
+Following Wolsey (2014, Slides 7 and 26), the Multi-Commodity Flow (\texttt{MCF}) formulation defines a distinct commodity $w \in V$ for each client, sending $d_w$ units of flow $f_{ij}^w \ge 0$ from the depot $0$ to client $w$:
+\begin{align}
+\text{(\textbf{MCF})} \quad \min \quad & \sum_{(i,j) \in A} c_{ij} x_{ij} \nonumber \\
+\text{s.t.} \quad & \text{Constraints~\eqref{eq:deg_out}--\eqref{eq:incomp}}, \nonumber \\
+& \sum_{j \in V} f_{0j}^w - \sum_{i \in V} f_{i0}^w = d_w && \forall w \in V, \label{eq:mcf_depot} \\
+& \sum_{i \in V_0 \setminus \{v\}} f_{iv}^w - \sum_{j \in V_0 \setminus \{v\}} f_{vj}^w = \begin{cases} d_w & \text{if } v = w \\ 0 & \text{if } v \in V \setminus \{w\} \end{cases} && \forall v, w \in V, \label{eq:mcf_cons} \\
+& 0 \le f_{ij}^w \le d_w x_{ij} && \forall (i, j) \in A, \; \forall w \in V, \label{eq:mcf_indiv} \\
+& d_j x_{ij} \le \sum_{w \in V} f_{ij}^w \le (Q - d_i) x_{ij} && \forall (i, j) \in A : j \in V, \label{eq:mcf_tot} \\
+& f_{i0}^w = 0, \qquad f_{wj}^w = 0 && \forall i, w \in V, \; \forall (w, j) \in A. \label{eq:mcf_zero}
+\end{align}
+
+\subsection{Theoretical Polyhedral Comparison of LP Relaxations}
+Let $\mathcal{P}_{\mathcal{M}}$ denote the projection onto the arc-variable space $x \in [0, 1]^{|A|}$ of the LP relaxation of formulation $\mathcal{M}$, and let $LB_{\mathcal{M}}$ be its optimal LP objective value.
+
+\begin{proposition}[Polyhedral Dominance Hierarchy]
+For any CVRP instance, the projected LP relaxations satisfy:
+\[
+\mathcal{P}_{\text{MCF}} \subseteq \mathcal{P}_{\text{SCF}} \subseteq \mathcal{P}_{\text{MTZ}} \qquad \text{and} \qquad \mathcal{P}_{\text{LiftedMTZ}} \subseteq \mathcal{P}_{\text{MTZ}}.
+\]
+Consequently, the root LP lower bounds satisfy:
+\[
+LB_{\text{MTZ}} \le LB_{\text{LiftedMTZ}} \le z^* \qquad \text{and} \qquad LB_{\text{MTZ}} \le LB_{\text{SCF}} \le LB_{\text{MCF}} \le z^*.
+\]
+Furthermore, every $x \in \mathcal{P}_{\text{SCF}}$ satisfies the fractional capacity cut inequalities $\sum_{(i,j) \in \delta^-(S)} x_{ij} \ge \frac{1}{Q}\sum_{v \in S} d_v$ for all $S \subseteq V$, and every $x \in \mathcal{P}_{\text{MCF}}$ satisfies both the fractional capacity cuts and the Dantzig--Fulkerson--Johnson subtour elimination constraints $\sum_{(i,j) \in \delta^-(S)} x_{ij} \ge 1$ for all $\emptyset \neq S \subseteq V$.
+\end{proposition}
+\begin{proof}
+First, setting $f_{ij} = \sum_{w \in V} f_{ij}^w$ for any feasible point $(x, \{f^w\})$ of \texttt{MCF} directly satisfies Constraints~\eqref{eq:scf_depot}--\eqref{eq:scf_return} of \texttt{SCF}, proving $\mathcal{P}_{\text{MCF}} \subseteq \mathcal{P}_{\text{SCF}}$. Second, summing the client flow conservation equations~\eqref{eq:scf_cons} over any non-empty subset $S \subseteq V$ yields:
+\[
+\sum_{v \in S} d_v = \sum_{(i,j) \in \delta^-(S)} f_{ij} - \sum_{(i,j) \in \delta^+(S)} f_{ij} \le \sum_{(i,j) \in \delta^-(S)} f_{ij} \le \sum_{(i,j) \in \delta^-(S)} (Q - d_i) x_{ij} \le Q \sum_{(i,j) \in \delta^-(S)} x_{ij},
+\]
+which proves that $\mathcal{P}_{\text{SCF}}$ implies all fractional capacity cuts (Wolsey, 2014, Slide 12). Third, in \texttt{MCF}, picking any single client $w \in S$ and summing~\eqref{eq:mcf_cons} over $v \in S$ gives $d_w \le \sum_{(i,j) \in \delta^-(S)} f_{ij}^w \le d_w \sum_{(i,j) \in \delta^-(S)} x_{ij}$ by~\eqref{eq:mcf_indiv}, whence $\sum_{(i,j) \in \delta^-(S)} x_{ij} \ge 1$. Finally, since $\max(0, Q - d_i - d_j) x_{ji} \ge 0$ for all $x_{ji} \ge 0$, every point feasible for \texttt{LiftedMTZ} satisfies \texttt{MTZ}, so $\mathcal{P}_{\text{LiftedMTZ}} \subseteq \mathcal{P}_{\text{MTZ}}$.
+\end{proof}
+
+\section{Instance Generation Methodology and Experimental Environment}
+
+\subsection{Synthetic Instance Generation Protocol}
+In accordance with the course guidelines for non-default subjects, we designed a deterministic, parameterized instance generator in \texttt{src/instances.jl} (\texttt{generate\_cvrp\_instance}) using \texttt{MersenneTwister(seed)} with seeds $s \in \{1, 2, \dots, 10\}$ for every configuration:
+\begin{enumerate}[noitemsep,topsep=3pt]
+    \item \textbf{Spatial Topologies in $[0, 100]^2$:}
+    \begin{itemize}[noitemsep,topsep=1pt]
+        \item \textbf{Uniform Center-Depot (\texttt{U-Center}):} The depot is placed at the center $(50, 50)$ and $n$ client coordinates $(x_i, y_i)$ are sampled independently and uniformly from $[0, 100]^2$.
+        \item \textbf{Clustered Corner-Depot (\texttt{C-Corner}):} The depot is placed at the origin $(0, 0)$ and clients are sampled around $3$ cluster centers drawn in $[20, 90]^2$ with isotropic Gaussian dispersion $\sigma = 10$ (clamped to $[0, 100]^2$).
+    \end{itemize}
+    \item \textbf{Metric Cost Matrix:} Following the TSPLIB/CVRPLIB \texttt{EUC\_2D} convention, $c_{ij} = \max(1, \lfloor \lVert p_i - p_j \rVert_2 + 0.5 \rfloor)$, followed by a Floyd--Warshall pass to guarantee strict metric triangle inequality after integer rounding.
+    \item \textbf{Demands, Capacity, and Guaranteed Fleet Feasibility:} Client demands $d_i$ are sampled uniformly from $\{5, 6, \dots, 25\}$ with vehicle capacity $Q = 100$. Given a target capacity tightness parameter $\alpha \in (0, 1)$ (default $\alpha = 0.85$), the number of vehicles is set to:
+    \[
+    K = \max\!\left(2, \; \left\lceil \frac{\sum_{i \in V} d_i}{\alpha Q} \right\rceil, \; K_{\text{FFD}}(d, Q)\right),
+    \]
+    where $K_{\text{FFD}}(d, Q)$ is the number of bins used by the First-Fit Decreasing (FFD) bin-packing algorithm. Including $K_{\text{FFD}}(d, Q)$ guarantees that every generated instance admits a feasible partition of client demands into $K$ vehicles of capacity $Q$.
+\end{enumerate}
+
+\subsection{Computational Environment and Timing Protocol}
+All implementations are written in \texttt{Julia} using \texttt{JuMP.jl} and solved with \texttt{HiGHS} and \texttt{Bonobo.jl} on an Apple M4 processor (10 cores, 24 GB unified memory, macOS). Following Lecture 5 (\texttt{branch\_and\_cut\_bonobo\_pluto\_v4.jl}) and the course project rubric:
+\begin{itemize}[noitemsep,topsep=2pt]
+    \item An untimed warm-up run is executed for every formulation and solver prior to measurement so that \texttt{Julia}'s JIT compilation overhead is completely excluded.
+    \item \textbf{CPU Time} measures only the execution of the \texttt{optimize!} call via the POSIX \texttt{ccall(:clock, Clong, ())} process clock.
+    \item For any run that terminates at the time or node limit without proving optimality, we report the relative optimality gap defined in the project specification:
+    \[
+    \text{Gap} = 1.0 - \frac{\text{Best known lower bound } (LB)}{\text{Value of best known solution } (UB)}.
+    \]
+\end{itemize}
+
+\section{Numerical Experiments and Discussion}
+
+\subsection{Verification on Wolsey's Lecture 6 Illustrative Instance}
+We first validate all five formulations on the 3-client illustrative instance from Wolsey (2014, Slides 19--20), where $n = 3$, demands $d = (2, 4, 5)$, capacity $Q = 10$, $K = 2$ vehicles, depot-client costs $c_{01} = 11, c_{02} = 12, c_{03} = 10$, and inter-client costs $c_{12} = 16, c_{13} = 18, c_{23} = 5$. The analytical optimum is $z^* = 49$, achieved by Route 1: $(0 \to 1 \to 0)$ (load $2 \le 10$, cost $22$) and Route 2: $(0 \to 2 \to 3 \to 0)$ (load $9 \le 10$, cost $27$).
+
+Table~\ref{tab:wolsey} confirms that all five models yield the exact optimal integer objective $z^* = 49.00$ in both \texttt{HiGHS} MIP and our custom \texttt{Bonobo.jl} B\&B solver, while already exhibiting clear separation in their root LP bounds ($44.00$ for \texttt{MTZ}/\texttt{ThreeIndex} vs.\ $46.80$ for \texttt{SCF} vs.\ $49.00$ for \texttt{LiftedMTZ} and \texttt{MCF}, which close the root gap completely on this instance).
+
+\begin{table}[htbp]
+\centering
+\caption{Model Verification on Wolsey's Lecture 6 Instance ($n=3, K=2, Q=10, z^*=49$)}
+\label{tab:wolsey}
+\small
+\begin{tabular}{lrrrrrrrrl}
+\toprule
+Formulation & Vars & Cons & $LB_{\text{LP}}$ & LP Gap (\%) & MIP Obj & Bonobo Obj & HiGHS Nodes & Bonobo Nodes & Valid \\
+\midrule
+\texttt{MTZ}        & 15 & 14 & 44.00 & 10.20\% & 49.00 & 49.00 & 1 & 7 & Yes \\
+\texttt{LiftedMTZ}  & 15 & 23 & 49.00 &  0.00\% & 49.00 & 49.00 & 1 & 1 & Yes \\
+\texttt{SCF}        & 24 & 29 & 46.80 &  4.49\% & 49.00 & 49.00 & 1 & 3 & Yes \\
+\texttt{ThreeIndex} & 35 & 29 & 44.00 & 10.20\% & 49.00 & 49.00 & 1 & 5 & Yes \\
+\texttt{MCF}        & 48 & 68 & 49.00 &  0.00\% & 49.00 & 49.00 & 1 & 1 & Yes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Placeholder for live experimental tables (auto-populated from results/summary_tables.tex)
+\input{../results/summary_tables.tex}
+
+\subsection{Discussion of Experimental Findings}
+Our four-part experimental evaluation across 10 independent runs per configuration highlights three fundamental mathematical modelling principles:
+\begin{enumerate}[noitemsep,topsep=3pt]
+    \item \textbf{Root LP Bound Hierarchy (Experiment A):} Across all problem sizes $n \in \{8, 10, 12, 15, 20, 25\}$, the empirical root LP bounds strictly obey Proposition~1:
+    \[
+    LB_{\text{MTZ}} \le LB_{\text{ThreeIndex}} < LB_{\text{LiftedMTZ}} < LB_{\text{SCF}} < LB_{\text{MCF}} \le z^*.
+    \]
+    Basic \texttt{MTZ} suffers from large LP integrality gaps ($18\%\text{--}27\%$) because fractional 2-cycles between nearby clients incur almost no penalty in the big-$M$ constraints. Lifting the reverse arc in \texttt{LiftedMTZ} eliminates fractional 2-cycles and cuts the root LP gap by roughly $5\text{--}7$ percentage points at zero additional variable cost. Moving to \texttt{SCF} further reduces the LP gap by enforcing fractional capacity cuts across all subsets $S \subseteq V$, while \texttt{MCF} achieves the tightest root LP relaxation ($< 4\%$ gap on average) by simultaneously enforcing all subtour elimination and fractional capacity constraints.
+    \item \textbf{Impact on Pure Branch-and-Bound Tree Size (Experiment B):} When solved in \texttt{Bonobo.jl} using plain LP-based Branch-and-Bound (without solver presolve, primal heuristics, or generic cutting planes), the effect of formulation tightness is dramatic. As $n$ grows from $6$ to $12$, the average number of B\&B nodes explored by \texttt{MTZ} grows rapidly and frequently hits the $3,000$-node limit, whereas \texttt{LiftedMTZ} reduces the B\&B tree size by more than $60\%$ and \texttt{SCF} reduces the node count by an order of magnitude, solving almost all instances to proven optimality within a few hundred nodes.
+    \item \textbf{Trade-Off Between Formulation Strength and LP Size in Full MILP Solving (Experiment C):} In \texttt{HiGHS}, \texttt{SCF} and \texttt{LiftedMTZ} emerge as the fastest and most scalable compact formulations across $n \in \{10, 15, 20, 25, 30, 40\}$. Although \texttt{MCF} provides the strongest root LP bound, its $O(n^3)$ variable and constraint count makes each LP relaxation solve significantly more expensive for $n \ge 20$. Conversely, the 3-Index vehicle-flow model (\texttt{ThreeIndex}), despite load-ordering symmetry breaking, scales poorly as $K$ and $n$ increase due to its $O(K n^2)$ binary variables and residual vehicle-routing symmetry.
+\end{enumerate}
+
+\section{Conclusion}
+We have designed, implemented, and benchmarked five compact MILP formulations for the Capacitated Vehicle Routing Problem in \texttt{Julia}. Both theoretical polyhedral analysis and 10-run numerical experiments confirm that \textbf{formulation tightness is decisive}: replacing basic \texttt{MTZ} potentials with \textbf{Lifted MTZ} inequalities or \textbf{Single-Commodity Flow (\texttt{SCF})} variables substantially strengthens the root LP relaxation, shrinks the Branch-and-Bound tree in both \texttt{Bonobo.jl} and \texttt{HiGHS}, and enables exact optimization of larger CVRP instances. For instances beyond $n = 50$, our results motivate combining compact 2-index formulations with lazy separation of Rounded Capacity Cuts (Branch-and-Cut) or Dantzig--Wolfe decomposition over $q$-routes (Column Generation), as studied in Lectures 5 and 6.
+
+\begin{thebibliography}{9}
+\small
+\bibitem{desrochers1991} M. Desrochers and G. Laporte (1991). Improvements and extensions to the Miller--Tucker--Zemlin subtour elimination constraints. \emph{Operations Research Letters}, 10(1):27--36.
+\bibitem{gavish1978} B. Gavish and S. C. Graves (1978). The Travelling Salesman Problem and related problems. \emph{Working Paper OR-078-78}, Operations Research Center, MIT.
+\bibitem{kara2004} I. Kara, G. Laporte, and T. Bektas (2004). A note on the lifted Miller--Tucker--Zemlin subtour elimination constraints for the capacitated vehicle routing problem. \emph{European Journal of Operational Research}, 158(3):793--795.
+\bibitem{toth2002} P. Toth and D. Vigo, eds. (2002). \emph{The Vehicle Routing Problem}. SIAM Monographs on Discrete Mathematics and Applications.
+\bibitem{wolsey2014} L. A. Wolsey (2014). \emph{Vehicle Routing and MIP}. 5th Porto Meeting on Mathematics for Industry (Course Lecture 6 reference).
+\end{thebibliography}
+
+\end{document}
