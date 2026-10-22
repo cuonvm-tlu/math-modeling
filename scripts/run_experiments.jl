@@ -3,9 +3,10 @@
 # =============================================================================
 #
 #  Follows the exact experimental protocol of:
-#    - `project/readme` (averages over 10 runs: Instance info, Objective, CPU time,
-#      Optimality Gap = 1 - LB/UB, Branch-and-Bound nodes, Status)
-#    - `lecture5/tsp_mtz_compare.jl` (Root LP bounds, Bonobo B&B vs HiGHS MIP)
+#    - `project/readme` (averages over 10 runs: Vertices, Links, Demands,
+#      Optimal/Best objective, CPU time of optimize! only, Status,
+#      Gap = 1.0 - LB/UB, and Branch-and-Bound nodes)
+#    - `lecture5/tsp_mtz_compare.jl` (Root LP bounds, Bonobo B&B / RCC B&C vs HiGHS MIP)
 # =============================================================================
 
 include(joinpath(@__DIR__, "..", "src", "instances.jl"))
@@ -31,6 +32,7 @@ function warmup_all()
         solve_cvrp_highs(w, form; time_limit = 5.0)
         solve_cvrp_bonobo(w, form; node_limit = 100)
     end
+    solve_cvrp_rcc_bnc(w; node_limit = 100)
     GC.gc()
     process_cpu_seconds()
     println("done.")
@@ -50,7 +52,6 @@ function run_experiment_root_bounds(; seeds = 1:10, n_values = (8, 10, 12, 15, 2
     for n in n_values
         for seed in seeds
             inst = generate_cvrp_instance(n; seed = seed, topology = :uniform)
-            # Obtain reference integer optimum (or best known UB) via SCF MIP
             ref_mip = solve_cvrp_highs(inst, :SCF; time_limit = 15.0)
             opt_val = ref_mip.obj
 
@@ -78,7 +79,6 @@ function run_experiment_root_bounds(; seeds = 1:10, n_values = (8, 10, 12, 15, 2
     raw_df = DataFrame(raw_rows)
     save_dataframe_csv(raw_df, joinpath(RESULTS_DIR, "exp_root_bounds.csv"))
 
-    # Aggregate over the 10 seeds per (n, formulation)
     sum_rows = NamedTuple[]
     @printf("%4s %5s | %-12s | %10s %10s %10s %10s %8s %8s\n",
             "n", "avg K", "Formulation", "Avg Opt", "Avg LP", "Avg Gap(%)", "Avg CPU(s)", "Vars", "Cons")
@@ -113,22 +113,26 @@ function run_experiment_root_bounds(; seeds = 1:10, n_values = (8, 10, 12, 15, 2
 end
 
 """
-Experiment B: Custom Plain LP-based Branch-and-Bound in Bonobo.jl (10 seeds per n).
-Isolates the pure effect of LP relaxation tightness on B&B tree size without solver presolve/heuristics.
+Experiment B: Custom LP-based Branch-and-Bound & RCC Branch-and-Cut in Bonobo.jl (10 seeds per n).
+Mirrors Part B of `lecture5/tsp_mtz_compare.jl`.
 """
 function run_experiment_bonobo(; seeds = 1:10, n_values = (6, 8, 10, 12), node_limit = 3_000)
     println("\n" * "="^92)
-    println("EXPERIMENT B: Plain LP Branch-and-Bound in Bonobo.jl (10 runs per n, node limit = $node_limit)")
+    println("EXPERIMENT B: Bonobo.jl Tree Search — Compact B&B vs RCC Branch-and-Cut (10 runs per n)")
     println("="^92)
 
     raw_rows = NamedTuple[]
-    forms = (:MTZ, :LiftedMTZ, :SCF)
+    forms = (:MTZ, :LiftedMTZ, :SCF, :RCC_BNC)
 
     for n in n_values
         for seed in seeds
             inst = generate_cvrp_instance(n; seed = seed, topology = :uniform)
             for form in forms
-                res = solve_cvrp_bonobo(inst, form; node_limit = node_limit)
+                res = if form == :RCC_BNC
+                    solve_cvrp_rcc_bnc(inst; node_limit = node_limit)
+                else
+                    solve_cvrp_bonobo(inst, form; node_limit = node_limit)
+                end
                 push!(raw_rows, (
                     instance = inst.name,
                     n = n,
@@ -151,7 +155,7 @@ function run_experiment_bonobo(; seeds = 1:10, n_values = (6, 8, 10, 12), node_l
 
     sum_rows = NamedTuple[]
     @printf("%4s %-12s | %10s %10s %10s %10s %10s %8s\n",
-            "n", "Formulation", "Avg Obj", "Avg Bound", "Avg Gap", "Avg Nodes", "Avg CPU(s)", "#Opt/10")
+            "n", "Method", "Avg Obj", "Avg Bound", "Avg Gap", "Avg Nodes", "Avg CPU(s)", "#Opt/10")
     println("-"^92)
 
     for n in n_values
@@ -186,7 +190,7 @@ end
 """
 Experiment C: Full MIP Solver Benchmark in HiGHS across 10 runs per size n.
 Reports the exact metrics required by `project/readme`:
-number of vertices, number of arcs, demands/vehicles, Optimal/Best objective,
+number of vertices, number of links, number of demands, Optimal or Best objective,
 CPU time (optimize! only), status, gap = 1.0 - LB/UB, and B&B nodes.
 """
 function run_experiment_highs_mip(;
@@ -194,19 +198,18 @@ function run_experiment_highs_mip(;
     n_values = (10, 15, 20, 25, 30, 40),
     time_limit = 10.0,
 )
-    println("\n" * "="^98)
+    println("\n" * "="^104)
     println("EXPERIMENT C: HiGHS MIP Benchmark Across 10 Runs per Size n (Time Limit = $(time_limit)s)")
-    println("="^98)
+    println("="^104)
 
     raw_rows = NamedTuple[]
 
     for n in n_values
-        # Include MCF up to n = 20 (since O(n³) has ~64,000 vars at n = 40)
         forms = n <= 20 ? (:MTZ, :LiftedMTZ, :SCF, :ThreeIndex, :MCF) : (:MTZ, :LiftedMTZ, :SCF, :ThreeIndex)
         for seed in seeds
             inst = generate_cvrp_instance(n; seed = seed, topology = :uniform)
             n_vertices = inst.n + 1
-            n_arcs = n_vertices * (n_vertices - 1)
+            n_links = n_vertices * (n_vertices - 1)
 
             for form in forms
                 res = solve_cvrp_highs(inst, form; time_limit = time_limit)
@@ -214,7 +217,7 @@ function run_experiment_highs_mip(;
                     instance = inst.name,
                     n = n,
                     vertices = n_vertices,
-                    arcs = n_arcs,
+                    links = n_links,
                     demands = n,
                     K = inst.K,
                     Q = inst.Q,
@@ -238,9 +241,9 @@ function run_experiment_highs_mip(;
     save_dataframe_csv(raw_df, joinpath(RESULTS_DIR, "exp_highs_mip.csv"))
 
     sum_rows = NamedTuple[]
-    @printf("%4s %5s %6s | %-11s | %9s %9s %9s %9s %9s %7s\n",
-            "|V|", "|A|", "Avg K", "Formulation", "Avg Obj", "Avg LB", "Avg Gap", "CPU(s)", "Avg Nodes", "#Opt/10")
-    println("-"^98)
+    @printf("%4s %5s %4s | %-11s | %9s %9s %9s %9s %9s %14s\n",
+            "|V|", "Links", "Dem", "Formulation", "Avg Obj", "Avg LB", "Avg Gap", "CPU(s)", "B&B Nodes", "Status (#Opt)")
+    println("-"^104)
 
     for n in n_values
         forms = n <= 20 ? (:MTZ, :LiftedMTZ, :SCF, :ThreeIndex, :MCF) : (:MTZ, :LiftedMTZ, :SCF, :ThreeIndex)
@@ -249,10 +252,12 @@ function run_experiment_highs_mip(;
             finite_objs = filter(isfinite, sub.obj)
             avg_obj = isempty(finite_objs) ? NaN : mean(finite_objs)
             n_opt = count(==("Optimal"), sub.status)
+            status_label = n_opt == length(seeds) ? "Optimal (10/10)" : "Not Opt ($(n_opt)/10)"
             row = (
                 n = n,
                 vertices = n + 1,
-                arcs = (n + 1) * n,
+                links = (n + 1) * n,
+                demands = n,
                 avg_K = mean(sub.K),
                 formulation = String(form),
                 num_vars = round(Int, mean(sub.num_vars)),
@@ -264,14 +269,15 @@ function run_experiment_highs_mip(;
                 avg_cpu_time = mean(sub.cpu_time),
                 avg_nodes = mean(sub.nodes),
                 opt_count = n_opt,
+                status = status_label,
             )
             push!(sum_rows, row)
-            @printf("%4d %5d %6.1f | %-11s | %9.2f %9.2f %9.4f %9.3f %9.1f %4d/10\n",
-                    row.vertices, row.arcs, row.avg_K, row.formulation,
+            @printf("%4d %5d %4d | %-11s | %9.2f %9.2f %9.4f %9.3f %9.1f %14s\n",
+                    row.vertices, row.links, row.demands, row.formulation,
                     row.avg_obj, row.avg_bound, row.avg_gap,
-                    row.avg_cpu_time, row.avg_nodes, row.opt_count)
+                    row.avg_cpu_time, row.avg_nodes, row.status)
         end
-        println("-"^98)
+        println("-"^104)
     end
 
     sum_df = DataFrame(sum_rows)
@@ -370,7 +376,7 @@ function export_latex_tables(sum_lp::DataFrame, sum_bnb::DataFrame, sum_mip::Dat
         println(io, "% Auto-generated LaTeX tables from `scripts/run_experiments.jl` (10 runs per setting)")
         println(io, "\\begin{table}[htbp]")
         println(io, "\\centering")
-        println(io, "\\caption{Root LP Relaxation Bounds and Integrality Gaps (\\%) Averaged over 10 Instances per Size \$n\$}")
+        println(io, "\\caption{Experiment A: Root LP Relaxation Bounds and Integrality Gaps (\\%) Averaged over 10 Runs per Size \$n\$}")
         println(io, "\\label{tab:root_lp}")
         println(io, "\\small")
         println(io, "\\begin{tabular}{rrlrrrrrr}")
@@ -378,7 +384,7 @@ function export_latex_tables(sum_lp::DataFrame, sum_bnb::DataFrame, sum_mip::Dat
         println(io, "\$n\$ & \$\\bar{K}\$ & Formulation & Vars & Cons & Avg \$z^*\$ & Avg \$LB_{\\text{LP}}\$ & Gap (\\%) & LP CPU (s) \\\\")
         println(io, "\\midrule")
         for r in eachrow(sum_lp)
-            @printf(io, "%d & %.1f & \\texttt{%s} & %d & %d & %.2f & %.2f & %.2f \\pm %.2f & %.4f \\\\\n",
+            @printf(io, "%d & %.1f & \\texttt{%s} & %d & %d & %.2f & %.2f & %.2f \$\\pm\$ %.2f & %.4f \\\\\n",
                     r.n, r.avg_K, r.formulation, r.num_vars, r.num_cons,
                     r.avg_opt, r.avg_lp_bound, r.avg_lp_gap_pct, r.std_lp_gap_pct, r.avg_cpu_time)
         end
@@ -388,16 +394,17 @@ function export_latex_tables(sum_lp::DataFrame, sum_bnb::DataFrame, sum_mip::Dat
 
         println(io, "\\begin{table}[htbp]")
         println(io, "\\centering")
-        println(io, "\\caption{Plain LP Branch-and-Bound in \\texttt{Bonobo.jl} (Averaged over 10 Runs, Node Limit = 3,000)}")
+        println(io, "\\caption{Experiment B: Tree Search in \\texttt{Bonobo.jl} --- Compact B\\&B vs.\\ 2-Index RCC Branch-and-Cut (Averaged over 10 Runs, Node Limit = 3,000)}")
         println(io, "\\label{tab:bonobo_bnb}")
         println(io, "\\small")
         println(io, "\\begin{tabular}{rlrrrrrr}")
         println(io, "\\toprule")
-        println(io, "\$n\$ & Formulation & Avg Obj & Avg Bound & Avg Gap & Avg B\\&B Nodes & Avg CPU (s) & \\#Opt/10 \\\\")
+        println(io, "\$n\$ & Method & Avg Obj & Avg Bound & Avg Gap & Avg B\\&B Nodes & Avg CPU (s) & \\#Opt/10 \\\\")
         println(io, "\\midrule")
         for r in eachrow(sum_bnb)
+            form_tex = replace(r.formulation, "_" => "\\_")
             @printf(io, "%d & \\texttt{%s} & %.2f & %.2f & %.4f & %.1f & %.4f & %d/10 \\\\\n",
-                    r.n, r.formulation, r.avg_obj, r.avg_bound, r.avg_gap,
+                    r.n, form_tex, r.avg_obj, r.avg_bound, r.avg_gap,
                     r.avg_nodes, r.avg_cpu_time, r.opt_count)
         end
         println(io, "\\bottomrule")
@@ -406,17 +413,35 @@ function export_latex_tables(sum_lp::DataFrame, sum_bnb::DataFrame, sum_mip::Dat
 
         println(io, "\\begin{table}[htbp]")
         println(io, "\\centering")
-        println(io, "\\caption{Full MILP Performance in \\texttt{HiGHS} Averaged over 10 Runs per Size \$n\$ (Time Limit = 10s)}")
+        println(io, "\\caption{Experiment C: Full MILP Performance in \\texttt{HiGHS} Averaged over 10 Runs per Size \$n\$ (Reporting Vertices, Links, Demands, Objective, CPU Time, Status, Gap \$= 1 - LB/UB\$, and B\\&B Nodes)}")
         println(io, "\\label{tab:highs_mip}")
-        println(io, "\\small")
-        println(io, "\\begin{tabular}{rrrlrrrrrrr}")
+        println(io, "\\footnotesize")
+        println(io, "\\begin{tabular}{rrrlrrrrrl}")
         println(io, "\\toprule")
-        println(io, "\$|V_0|\$ & \$|A|\$ & \$\\bar{K}\$ & Formulation & Vars & Cons & Avg Obj & Avg LB & Avg Gap & CPU (s) & Avg Nodes & \\#Opt \\\\")
+        println(io, "Vertices & Links & Demands & Formulation & Avg Obj & Avg LB & Gap & CPU (s) & B\\&B Nodes & Status (\\#Opt) \\\\")
         println(io, "\\midrule")
         for r in eachrow(sum_mip)
-            @printf(io, "%d & %d & %.1f & \\texttt{%s} & %d & %d & %.2f & %.2f & %.4f & %.3f & %.1f & %d/10 \\\\\n",
-                    r.vertices, r.arcs, r.avg_K, r.formulation, r.num_vars, r.num_cons,
-                    r.avg_obj, r.avg_bound, r.avg_gap, r.avg_cpu_time, r.avg_nodes, r.opt_count)
+            @printf(io, "%d & %d & %d & \\texttt{%s} & %.2f & %.2f & %.4f & %.3f & %.1f & %s \\\\\n",
+                    r.vertices, r.links, r.demands, r.formulation,
+                    r.avg_obj, r.avg_bound, r.avg_gap, r.avg_cpu_time, r.avg_nodes, r.status)
+        end
+        println(io, "\\bottomrule")
+        println(io, "\\end{tabular}")
+        println(io, "\\end{table}\n")
+
+        println(io, "\\begin{table}[htbp]")
+        println(io, "\\centering")
+        println(io, "\\caption{Experiment D: Sensitivity to Capacity Tightness \$\\alpha\$ and Spatial Topology (\$n = 18\$, Averaged over 10 Runs)}")
+        println(io, "\\label{tab:sensitivity}")
+        println(io, "\\small")
+        println(io, "\\begin{tabular}{lrlrrrrrr}")
+        println(io, "\\toprule")
+        println(io, "Setting & \$\\bar{K}\$ & Formulation & Avg \$LB_{\\text{LP}}\$ & Avg Obj & Avg Gap & CPU (s) & Avg B\\&B Nodes & \\#Opt/10 \\\\")
+        println(io, "\\midrule")
+        for r in eachrow(sum_sens)
+            @printf(io, "%s & %.1f & \\texttt{%s} & %.2f & %.2f & %.4f & %.3f & %.1f & %d/10 \\\\\n",
+                    r.setting, r.avg_K, r.formulation, r.avg_lp_bound,
+                    r.avg_obj, r.avg_gap, r.avg_cpu_time, r.avg_nodes, r.opt_count)
         end
         println(io, "\\bottomrule")
         println(io, "\\end{tabular}")

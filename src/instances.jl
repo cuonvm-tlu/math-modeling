@@ -1,5 +1,5 @@
 # =============================================================================
-#  CVRP Instance Data Structure, Synthetic Instance Generator & Validator
+#  CVRP Instance Data Structure, Deterministic Instance Generator & Validator
 # =============================================================================
 #
 #  Node Indexing Convention (matching Lecture 5 `tsp_mtz_compare.jl`):
@@ -9,8 +9,49 @@
 #    - `C` is the (n+1) × (n+1) symmetric/directed travel cost matrix.
 # =============================================================================
 
-using Random
 using Printf
+
+"""
+    DeterministicRNG
+
+Portable 64-bit Xorshift64* pseudo-random number generator guaranteeing
+bit-for-bit identical synthetic CVRP instances across all Julia versions and OS platforms.
+"""
+mutable struct DeterministicRNG
+    state::UInt64
+end
+
+function DeterministicRNG(seed::Integer)
+    s = UInt64(seed <= 0 ? 1 : seed)
+    # SplitMix64 initialization step
+    z = s + 0x9e3779b97f4a7c15
+    z = (z ⊻ (z >> 30)) * 0xbf58476d1ce4e5b9
+    z = (z ⊻ (z >> 27)) * 0x94d049bb133111eb
+    z = z ⊻ (z >> 31)
+    return DeterministicRNG(z == 0 ? 0x2545f4914f6cdd1d : z)
+end
+
+function next_u64!(rng::DeterministicRNG)
+    x = rng.state
+    x = x ⊻ (x >> 12)
+    x = x ⊻ (x << 25)
+    x = x ⊻ (x >> 27)
+    rng.state = x
+    return x * 0x2545f4914f6cdd1d
+end
+
+rand_uniform!(rng::DeterministicRNG) = Float64(next_u64!(rng) >> 11) * (1.0 / 9007199254740992.0)
+
+function rand_int!(rng::DeterministicRNG, lo::Int, hi::Int)
+    span = UInt64(hi - lo + 1)
+    return lo + Int(rem(next_u64!(rng), span))
+end
+
+function rand_normal!(rng::DeterministicRNG)
+    u1 = max(1e-12, rand_uniform!(rng))
+    u2 = rand_uniform!(rng)
+    return sqrt(-2.0 * log(u1)) * cos(2.0 * pi * u2)
+end
 
 struct CVRPInstance
     name::String
@@ -108,7 +149,7 @@ function generate_cvrp_instance(
     topology::Symbol = :uniform,
     demand_range::Tuple{Int,Int} = (5, 25),
 )
-    rng = MersenneTwister(seed)
+    rng = DeterministicRNG(seed + 1000 * n + (topology == :clustered ? 500_000 : 0))
     N = n + 1
     coords = zeros(Float64, N, 2)
 
@@ -116,18 +157,22 @@ function generate_cvrp_instance(
         coords[1, 1] = 50.0
         coords[1, 2] = 50.0
         for i in 2:N
-            coords[i, 1] = 100.0 * rand(rng)
-            coords[i, 2] = 100.0 * rand(rng)
+            coords[i, 1] = 100.0 * rand_uniform!(rng)
+            coords[i, 2] = 100.0 * rand_uniform!(rng)
         end
     elseif topology == :clustered
         coords[1, 1] = 0.0
         coords[1, 2] = 0.0
         n_clusters = 3
-        centers = 20.0 .+ 70.0 .* rand(rng, n_clusters, 2)
+        centers = zeros(Float64, n_clusters, 2)
+        for c in 1:n_clusters
+            centers[c, 1] = 20.0 + 70.0 * rand_uniform!(rng)
+            centers[c, 2] = 20.0 + 70.0 * rand_uniform!(rng)
+        end
         for i in 2:N
-            c_idx = mod1(i + rand(rng, 0:n_clusters-1), n_clusters)
-            coords[i, 1] = clamp(centers[c_idx, 1] + 10.0 * randn(rng), 0.0, 100.0)
-            coords[i, 2] = clamp(centers[c_idx, 2] + 10.0 * randn(rng), 0.0, 100.0)
+            c_idx = mod1(i + rand_int!(rng, 0, n_clusters - 1), n_clusters)
+            coords[i, 1] = clamp(centers[c_idx, 1] + 10.0 * rand_normal!(rng), 0.0, 100.0)
+            coords[i, 2] = clamp(centers[c_idx, 2] + 10.0 * rand_normal!(rng), 0.0, 100.0)
         end
     else
         error("Unsupported topology: $topology (use :uniform or :clustered)")
@@ -136,7 +181,7 @@ function generate_cvrp_instance(
     q = zeros(Int, N)
     dmin, dmax = demand_range
     for i in 2:N
-        q[i] = rand(rng, dmin:dmax)
+        q[i] = rand_int!(rng, dmin, dmax)
     end
 
     total_demand = sum(q)

@@ -1,8 +1,8 @@
 # =============================================================================
 #  Model Verification & Sanity Check Script
-#  Verifies that all 5 compact CVRP formulations produce identical optimal
-#  integer objectives and valid routes on Wolsey's Slide 19 benchmark and
-#  synthetic instances.
+#  Verifies that all 5 compact CVRP formulations + 2-Index RCC Branch-and-Cut
+#  produce identical optimal integer objectives and valid routes on Wolsey's
+#  Slide 19 benchmark and synthetic instances.
 # =============================================================================
 
 include(joinpath(@__DIR__, "..", "src", "instances.jl"))
@@ -34,6 +34,11 @@ function run_verification()
         @assert isapprox(bnb_res.obj, 49.0; atol = 1e-4) "Expected 49.0 in Bonobo for $form, got $(bnb_res.obj)"
         @assert mip_res.valid "Invalid routes for $form on Wolsey instance!"
     end
+
+    rcc_res = solve_cvrp_rcc_bnc(w_inst; node_limit = 2_000)
+    @printf("%-14s | %10s %10s %10.2f %8s %8d %10s\n",
+            "RCC (B&C)", "—", "—", rcc_res.obj, "—", rcc_res.nodes, "true")
+    @assert isapprox(rcc_res.obj, 49.0; atol = 1e-4) "Expected 49.0 in RCC B&C, got $(rcc_res.obj)"
 
     println("\n" * "="^88)
     println("2. Cross-Formulation Consistency on Synthetic Instances (n in [6, 8, 10])")
@@ -70,7 +75,7 @@ function run_verification()
                 inst.name, ref_obj, lps[:MTZ], lps[:LiftedMTZ], lps[:SCF], lps[:ThreeIndex], lps[:MCF])
     end
 
-    println("\nAll 5 formulations verified successfully!")
+    println("\nAll formulations and RCC Branch-and-Cut verified successfully!")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

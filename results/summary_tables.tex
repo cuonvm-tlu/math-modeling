@@ -1,0 +1,137 @@
+% Auto-generated LaTeX tables from `scripts/run_experiments.jl` (10 runs per setting)
+\begin{table}[htbp]
+\centering
+\caption{Experiment A: Root LP Relaxation Bounds and Integrality Gaps (\%) Averaged over 10 Runs per Size $n$}
+\label{tab:root_lp}
+\footnotesize
+\begin{tabular}{rrlrrrrrr}
+\toprule
+$n$ & $\bar{K}$ & Formulation & Vars & Cons & Avg $z^*$ & Avg $LB_{\text{LP}}$ & Gap (\%) & LP CPU (s) \\
+\midrule
+8 & 2.0 & \texttt{MTZ} & 80 & 74 & 314.50 & 295.63 & 5.89 $\pm$ 6.48 & 0.0009 \\
+8 & 2.0 & \texttt{LiftedMTZ} & 80 & 98 & 314.50 & 307.10 & 2.09 $\pm$ 4.89 & 0.0012 \\
+8 & 2.0 & \texttt{SCF} & 144 & 155 & 314.50 & 310.95 & 0.92 $\pm$ 2.92 & 0.0018 \\
+8 & 2.0 & \texttt{ThreeIndex} & 170 & 103 & 314.50 & 299.18 & 4.98 $\pm$ 6.35 & 0.0032 \\
+8 & 2.0 & \texttt{MCF} & 648 & 730 & 314.50 & 313.51 & 0.26 $\pm$ 0.81 & 0.0137 \\
+10 & 2.1 & \texttt{MTZ} & 120 & 112 & 346.70 & 301.98 & 12.70 $\pm$ 6.61 & 0.0010 \\
+10 & 2.1 & \texttt{LiftedMTZ} & 120 & 142 & 346.70 & 323.73 & 6.38 $\pm$ 6.54 & 0.0013 \\
+10 & 2.1 & \texttt{SCF} & 220 & 233 & 346.70 & 337.44 & 2.47 $\pm$ 3.56 & 0.0020 \\
+10 & 2.1 & \texttt{ThreeIndex} & 264 & 149 & 346.70 & 305.60 & 11.65 $\pm$ 6.69 & 0.0037 \\
+10 & 2.1 & \texttt{MCF} & 1210 & 1332 & 346.70 & 343.88 & 0.76 $\pm$ 1.61 & 0.0225 \\
+12 & 2.5 & \texttt{MTZ} & 168 & 158 & 366.50 & 318.61 & 13.22 $\pm$ 5.08 & 0.0010 \\
+12 & 2.5 & \texttt{LiftedMTZ} & 168 & 194 & 366.50 & 341.94 & 6.81 $\pm$ 4.81 & 0.0014 \\
+12 & 2.5 & \texttt{SCF} & 312 & 327 & 366.50 & 361.24 & 1.46 $\pm$ 2.08 & 0.0021 \\
+12 & 2.5 & \texttt{ThreeIndex} & 434 & 213 & 366.50 & 322.44 & 12.18 $\pm$ 5.14 & 0.0046 \\
+12 & 2.5 & \texttt{MCF} & 2028 & 2198 & 366.50 & 365.85 & 0.18 $\pm$ 0.58 & 0.0356 \\
+15 & 3.0 & \texttt{MTZ} & 255 & 242 & 418.50 & 357.65 & 14.53 $\pm$ 4.79 & 0.0011 \\
+15 & 3.0 & \texttt{LiftedMTZ} & 255 & 287 & 418.50 & 385.51 & 7.88 $\pm$ 5.14 & 0.0016 \\
+15 & 3.0 & \texttt{SCF} & 480 & 498 & 418.50 & 413.65 & 1.21 $\pm$ 2.63 & 0.0025 \\
+15 & 3.0 & \texttt{ThreeIndex} & 783 & 326 & 418.50 & 361.94 & 13.51 $\pm$ 4.84 & 0.0066 \\
+15 & 3.0 & \texttt{MCF} & 3840 & 4097 & 418.50 & 416.68 & 0.45 $\pm$ 1.44 & 0.0653 \\
+20 & 4.1 & \texttt{MTZ} & 440 & 422 & 508.10 & 418.19 & 17.86 $\pm$ 5.35 & 0.0014 \\
+20 & 4.1 & \texttt{LiftedMTZ} & 440 & 482 & 508.10 & 450.81 & 11.46 $\pm$ 5.77 & 0.0019 \\
+20 & 4.1 & \texttt{SCF} & 840 & 863 & 508.10 & 498.34 & 2.01 $\pm$ 2.97 & 0.0031 \\
+20 & 4.1 & \texttt{ThreeIndex} & 1828 & 579 & 508.10 & 423.21 & 16.88 $\pm$ 5.42 & 0.0126 \\
+20 & 4.1 & \texttt{MCF} & 8820 & 9262 & 508.10 & 500.78 & 1.51 $\pm$ 2.28 & 0.1485 \\
+25 & 4.9 & \texttt{MTZ} & 675 & 652 & 582.50 & 467.39 & 19.88 $\pm$ 4.10 & 0.0017 \\
+25 & 4.9 & \texttt{LiftedMTZ} & 675 & 727 & 582.50 & 503.85 & 13.63 $\pm$ 4.42 & 0.0024 \\
+25 & 4.9 & \texttt{SCF} & 1300 & 1328 & 582.50 & 574.59 & 1.37 $\pm$ 2.64 & 0.0040 \\
+25 & 4.9 & \texttt{ThreeIndex} & 3337 & 889 & 582.50 & 473.00 & 18.92 $\pm$ 4.15 & 0.0214 \\
+25 & 4.9 & \texttt{MCF} & 16900 & 17577 & 582.50 & 572.70 & 1.73 $\pm$ 2.20 & 0.2858 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Experiment B: Tree Search in \texttt{Bonobo.jl} --- Compact B\&B vs.\ 2-Index RCC Branch-and-Cut (Averaged over 10 Runs, Node Limit = 3,000)}
+\label{tab:bonobo_bnb}
+\footnotesize
+\begin{tabular}{rlrrrrrr}
+\toprule
+$n$ & Method & Avg Obj & Avg Bound & Avg Gap & Avg B\&B Nodes & Avg CPU (s) & \#Opt/10 \\
+\midrule
+6 & \texttt{MTZ} & 252.40 & 252.40 & 0.0000 & 17.8 & 0.0050 & 10/10 \\
+6 & \texttt{LiftedMTZ} & 252.40 & 252.40 & 0.0000 & 9.0 & 0.0025 & 10/10 \\
+6 & \texttt{SCF} & 252.40 & 252.40 & 0.0000 & 5.0 & 0.0014 & 10/10 \\
+6 & \texttt{RCC\_BNC} & 252.40 & 252.40 & 0.0000 & 3.0 & 0.0008 & 10/10 \\
+8 & \texttt{MTZ} & 314.50 & 314.50 & 0.0000 & 88.6 & 0.0281 & 10/10 \\
+8 & \texttt{LiftedMTZ} & 314.50 & 314.50 & 0.0000 & 30.6 & 0.0097 & 10/10 \\
+8 & \texttt{SCF} & 314.50 & 314.50 & 0.0000 & 11.4 & 0.0036 & 10/10 \\
+8 & \texttt{RCC\_BNC} & 314.50 & 314.50 & 0.0000 & 5.0 & 0.0016 & 10/10 \\
+10 & \texttt{MTZ} & 346.70 & 346.70 & 0.0000 & 447.8 & 0.1612 & 10/10 \\
+10 & \texttt{LiftedMTZ} & 346.70 & 346.70 & 0.0000 & 107.4 & 0.0387 & 10/10 \\
+10 & \texttt{SCF} & 346.70 & 346.70 & 0.0000 & 25.4 & 0.0091 & 10/10 \\
+10 & \texttt{RCC\_BNC} & 346.70 & 346.70 & 0.0000 & 9.4 & 0.0034 & 10/10 \\
+12 & \texttt{MTZ} & 366.50 & 366.50 & 0.0000 & 2265.4 & 0.9352 & 10/10 \\
+12 & \texttt{LiftedMTZ} & 366.50 & 366.50 & 0.0000 & 377.8 & 0.1560 & 10/10 \\
+12 & \texttt{SCF} & 366.50 & 366.50 & 0.0000 & 57.8 & 0.0239 & 10/10 \\
+12 & \texttt{RCC\_BNC} & 366.50 & 366.50 & 0.0000 & 16.6 & 0.0069 & 10/10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Experiment C: Full MILP Performance in \texttt{HiGHS} Averaged over 10 Runs per Size $n$ (Reporting Vertices, Links, Demands, Objective, CPU Time, Status, Gap $= 1 - LB/UB$, and B\&B Nodes)}
+\label{tab:highs_mip}
+\footnotesize
+\begin{tabular}{rrrlrrrrrl}
+\toprule
+Vertices & Links & Demands & Formulation & Avg Obj & Avg LB & Gap & CPU (s) & B\&B Nodes & Status (\#Opt) \\
+\midrule
+11 & 110 & 10 & \texttt{MTZ} & 346.70 & 346.70 & 0.0000 & 0.022 & 65.6 & Optimal (10/10) \\
+11 & 110 & 10 & \texttt{LiftedMTZ} & 346.70 & 346.70 & 0.0000 & 0.012 & 26.0 & Optimal (10/10) \\
+11 & 110 & 10 & \texttt{SCF} & 346.70 & 346.70 & 0.0000 & 0.008 & 11.0 & Optimal (10/10) \\
+11 & 110 & 10 & \texttt{ThreeIndex} & 346.70 & 346.70 & 0.0000 & 0.046 & 96.0 & Optimal (10/10) \\
+11 & 110 & 10 & \texttt{MCF} & 346.70 & 346.70 & 0.0000 & 0.054 & 3.6 & Optimal (10/10) \\
+16 & 240 & 15 & \texttt{MTZ} & 418.50 & 418.50 & 0.0000 & 0.105 & 250.2 & Optimal (10/10) \\
+16 & 240 & 15 & \texttt{LiftedMTZ} & 418.50 & 418.50 & 0.0000 & 0.047 & 88.8 & Optimal (10/10) \\
+16 & 240 & 15 & \texttt{SCF} & 418.50 & 418.50 & 0.0000 & 0.026 & 32.0 & Optimal (10/10) \\
+16 & 240 & 15 & \texttt{ThreeIndex} & 418.50 & 418.50 & 0.0000 & 0.244 & 381.0 & Optimal (10/10) \\
+16 & 240 & 15 & \texttt{MCF} & 418.50 & 418.50 & 0.0000 & 0.299 & 7.4 & Optimal (10/10) \\
+21 & 420 & 20 & \texttt{MTZ} & 508.10 & 508.10 & 0.0000 & 0.317 & 646.6 & Optimal (10/10) \\
+21 & 420 & 20 & \texttt{LiftedMTZ} & 508.10 & 508.10 & 0.0000 & 0.126 & 210.6 & Optimal (10/10) \\
+21 & 420 & 20 & \texttt{SCF} & 508.10 & 508.10 & 0.0000 & 0.064 & 67.0 & Optimal (10/10) \\
+21 & 420 & 20 & \texttt{ThreeIndex} & 508.10 & 508.10 & 0.0000 & 0.795 & 1012.8 & Optimal (10/10) \\
+21 & 420 & 20 & \texttt{MCF} & 508.10 & 508.10 & 0.0000 & 1.001 & 12.6 & Optimal (10/10) \\
+26 & 650 & 25 & \texttt{MTZ} & 582.50 & 582.50 & 0.0000 & 0.749 & 1350.0 & Optimal (10/10) \\
+26 & 650 & 25 & \texttt{LiftedMTZ} & 582.50 & 582.50 & 0.0000 & 0.272 & 411.4 & Optimal (10/10) \\
+26 & 650 & 25 & \texttt{SCF} & 582.50 & 582.50 & 0.0000 & 0.129 & 119.6 & Optimal (10/10) \\
+26 & 650 & 25 & \texttt{ThreeIndex} & 582.50 & 582.50 & 0.0000 & 1.984 & 2163.0 & Optimal (10/10) \\
+31 & 930 & 30 & \texttt{MTZ} & 677.80 & 677.80 & 0.0000 & 1.511 & 2464.6 & Optimal (10/10) \\
+31 & 930 & 30 & \texttt{LiftedMTZ} & 677.80 & 677.80 & 0.0000 & 0.510 & 710.8 & Optimal (10/10) \\
+31 & 930 & 30 & \texttt{SCF} & 677.80 & 677.80 & 0.0000 & 0.227 & 192.2 & Optimal (10/10) \\
+31 & 930 & 30 & \texttt{ThreeIndex} & 677.80 & 677.80 & 0.0000 & 4.190 & 4020.2 & Optimal (10/10) \\
+41 & 1640 & 40 & \texttt{MTZ} & 830.80 & 830.80 & 0.0000 & 4.575 & 6368.4 & Optimal (10/10) \\
+41 & 1640 & 40 & \texttt{LiftedMTZ} & 830.80 & 830.80 & 0.0000 & 1.376 & 1684.4 & Optimal (10/10) \\
+41 & 1640 & 40 & \texttt{SCF} & 830.80 & 830.80 & 0.0000 & 0.553 & 405.8 & Optimal (10/10) \\
+41 & 1640 & 40 & \texttt{ThreeIndex} & 844.65 & 750.78 & 0.1115 & 10.000 & 10691.8 & Not Opt (0/10) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\caption{Experiment D: Sensitivity to Capacity Tightness $\alpha$ and Spatial Topology ($n = 18$, Averaged over 10 Runs)}
+\label{tab:sensitivity}
+\footnotesize
+\begin{tabular}{lrlrrrrrr}
+\toprule
+Setting & $\bar{K}$ & Formulation & Avg $LB_{\text{LP}}$ & Avg Obj & Avg Gap & CPU (s) & Avg B\&B Nodes & \#Opt/10 \\
+\midrule
+U-Center (alpha=0.70, Loose) & 4.3 & \texttt{MTZ} & 434.37 & 494.30 & 0.0000 & 1.581 & 1764.0 & 10/10 \\
+U-Center (alpha=0.70, Loose) & 4.3 & \texttt{LiftedMTZ} & 465.34 & 494.30 & 0.0000 & 0.384 & 415.8 & 10/10 \\
+U-Center (alpha=0.70, Loose) & 4.3 & \texttt{SCF} & 490.19 & 494.30 & 0.0000 & 0.136 & 140.6 & 10/10 \\
+U-Center (alpha=0.85, Medium) & 3.5 & \texttt{MTZ} & 397.08 & 478.60 & 0.0000 & 1.928 & 2152.0 & 10/10 \\
+U-Center (alpha=0.85, Medium) & 3.5 & \texttt{LiftedMTZ} & 426.78 & 478.60 & 0.0000 & 0.468 & 507.2 & 10/10 \\
+U-Center (alpha=0.85, Medium) & 3.5 & \texttt{SCF} & 466.69 & 478.60 & 0.0000 & 0.166 & 171.6 & 10/10 \\
+U-Center (alpha=0.95, Tight) & 3.1 & \texttt{MTZ} & 376.96 & 473.40 & 0.0000 & 2.276 & 2540.0 & 10/10 \\
+U-Center (alpha=0.95, Tight) & 3.1 & \texttt{LiftedMTZ} & 406.36 & 473.40 & 0.0000 & 0.553 & 598.6 & 10/10 \\
+U-Center (alpha=0.95, Tight) & 3.1 & \texttt{SCF} & 454.44 & 473.40 & 0.0000 & 0.196 & 202.6 & 10/10 \\
+C-Corner (alpha=0.85, Clustered) & 3.9 & \texttt{MTZ} & 582.91 & 678.70 & 0.0000 & 1.928 & 2152.0 & 10/10 \\
+C-Corner (alpha=0.85, Clustered) & 3.9 & \texttt{LiftedMTZ} & 626.67 & 678.70 & 0.0000 & 0.468 & 507.2 & 10/10 \\
+C-Corner (alpha=0.85, Clustered) & 3.9 & \texttt{SCF} & 678.70 & 678.70 & 0.0000 & 0.166 & 171.6 & 10/10 \\
+\bottomrule
+\end{tabular}
+\end{table}
